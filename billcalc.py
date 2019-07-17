@@ -4,9 +4,13 @@ import csv
 import os
 import datetime
 import uuid
+import argparse
+import sys
+from distutils import util
 
 TENANT_FILENAME = os.path.join(os.getcwd(), 'tenants.csv')
 
+# Set up some classes - Bills/Property/Persons
 class Bill:
     def __init__(self, provider, amount, from_date, to_date, num_people_in_house):
         self.provider = provider
@@ -26,7 +30,7 @@ class Bill:
         return (self.to_date - self.from_date).days
 
 class Property:
-    def __init__(self, name, tenant_count, bill_types=None): # Bill types as a list of tuples
+    def __init__(self, name, tenant_count, bill_types=None): # Bill types are stored as a list of tuples
         self.name = name
         self.tenant_count = tenant_count
         self.bill = {}
@@ -52,7 +56,7 @@ class Person:
     def __init__(self, name, entered_house, still_at_address, left_house=None):
         self.name = name
         self.entered_house = entered_house
-        self.still_at_address = still_at_address
+        self.still_at_address = util.strtobool(still_at_address) # Force boolean
         self.id = uuid.uuid4() # Generate unique ID for referencing tenant
         if left_house == None:
             self.left_house = datetime.date.today()
@@ -64,11 +68,12 @@ class Person:
 
     # Call this function to return today's date if someone is still living there
     def get_to_date(self):
-        if self.still_at_address == True:
+        if self.still_at_address:
             return datetime.date.today()
         else:
             return self.left_house
 
+    # Calculate how much a tenant owes by taking a bill object
     def owes(self, input_bill):
         if self.get_from_date() <= input_bill.get_from_date():
             tenant_pays_from = input_bill.get_from_date()
@@ -79,6 +84,8 @@ class Person:
             tenant_pays_to = input_bill.get_to_date()
         elif self.get_from_date() < input_bill.get_from_date():
             tenant_pays_to = self.get_to_date()
+        elif input_bill.get_to_date() > datetime.date.today():
+            sys.exit("Bill end date is later than today's date")
 
         days_owing = (tenant_pays_to - tenant_pays_from).days
         if days_owing > 0:
@@ -86,11 +93,63 @@ class Person:
         else:
             return None
 
+    # This function helps output the data to a CSV
     def raw_output(self):
-        return self.name, self.entered_house.year,                 self.entered_house.month,                 self.entered_house.day,                 self.still_at_address,                 self.left_house.year,                 self.left_house.month,                 self.left_house.day
+        return self.name, self.entered_house.year,\
+            self.entered_house.month,\
+            self.entered_house.day,\
+            self.still_at_address,\
+            self.left_house.year,\
+            self.left_house.month,\
+            self.left_house.day
 
+    # Summary of the individual tenant
     def summary(self):
         print('{:10} \t {} -> {} ({} days)'.format(self.name, self.get_from_date(), self.get_to_date(), str((self.get_to_date() - self.get_from_date()).days)))
+
+class MenuSwitcher(object):
+    def __init__(self, tenant_filename, tenant_list, property_conf, bill_list):
+        self.tenant_filename = tenant_filename
+        self.tenant_list = tenant_list
+        self.property_conf = property_conf
+        self.bill_list = bill_list
+
+    def menu_item(self, argument):
+        method_name = 'menu_' + str(argument)
+        method = getattr(self, method_name, lambda: "Invalid option")
+        return method()
+
+    def menu_2(self, tenant_list):
+        return
+
+    def main_menu(self):
+        menu_options = {
+            1: ("Remove tenant", print("test")),
+            2: "Add tenant",
+            3: "List tenants",
+            4: "Add bill",
+            5: "List bills",
+            6: "Remove bill",
+            7: "View property details",
+            8: "Edit property details",
+        }
+
+        print("--== Menu ==--")
+        print()
+        print("Choose from the following options")
+        print("---------------------------------")
+        for key, value in menu_options.items():
+            print(str(key) + ": " + str(value))
+
+        menu_option = input(": ")
+        self.menu_item(int(menu_option))
+
+
+    def execute_decision(self, argument):
+        if argument == 1:
+            print("Not an option yet, edit the CSV")
+        elif agument == 2:
+            ask_to_add_tenant(tenant_filename, tenant_list)
 
 # Keep a file with the list of tenants
 def save_tenants(filename, tenant_list):
@@ -109,16 +168,16 @@ def read_tenants(filename):
         reader = csv.reader(csvfile)
         next(reader, None) # Skip header
         for row in reader:
-            tenant_list.append(Person(row[0], # Name
+            tenant_list.append(Person(str(row[0]), # Name
                                       datetime.date(int(row[1]), int(row[2]), int(row[3])), # In house
                                       row[4], # Still at address boolean
                                       datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
-            #print(csvfile.line_num)
     print("Imported", len(tenant_list), "tenants")
     return tenant_list
 
-def read_property(filename):
-    property
+# The intention here is to load the property from a database/CSV
+#def read_property(filename):
+    #property
 
 def add_new_tenant():
     name = input("Name of person: ")
@@ -180,7 +239,7 @@ def load_tenants(filename):
 
 def load_property_conf(filename):
     if os.path.exists(filename):
-        propert_conf = read()
+        property_conf = read()
 
 def add_bill(property_object):
     name = input("Bill type: ")
@@ -192,6 +251,7 @@ def add_bill(property_object):
 
     return Bill(name, float(amount), datetime.date(int(start_year), int(start_month), int(start_day)), datetime.date(int(end_year), int(end_month), int(end_day)), int(property_object.tenant_count))
 
+# Check each tenant if they apply to a bill, and if so, print out name, days and amount
 def who_owes_what(bill, tenants):
     total_check = 0
     for tenant in tenants:
@@ -204,16 +264,52 @@ def who_owes_what(bill, tenants):
     print("{} bill, {} total sum [{:+} difference]".format(bill.amount, total_check, difference))
 
 
+
 def main():
-    print("Welcome to the bill calculator!")
-    tenant_list = load_tenants(TENANT_FILENAME)
-    print()
-    # Set property details, bills are a dummy at the moment, most important is 4 (number of tenants)
-    postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water')])
-    postoffice.list_bills()
-    new_bill = add_bill(postoffice)
-    print()
-    who_owes_what(new_bill, tenant_list) # List how much is owing
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-a", "--add_bill", metavar=('AMOUNT', 'START-DATE', 'END-DATE', 'BILL-TYPE'), help="Add bill. Dates should be yyyy.mm.dd. Bill type options gas/electricity/etc", nargs=4)
+    parser.add_argument("-lt", "--list_tenants", help="Lists current tenants in CSV", action='store_true')
+    #parser.add_argument("-e", "--enddate", help="End date as yyyy/mm/dd", type=str)
+    #parser.add_argument("-t", "--type", help="Bill type (gas/water/electricity/etc)", type=str)
+    args = parser.parse_args()
+    if args.list_tenants:
+        tenant_list = read_tenants(TENANT_FILENAME)
+        list_tenants(tenant_list)
+    if args.add_bill is not None:
+        amount = float(args.add_bill[0])
+        start_date_list = args.add_bill[1].split(".")
+        end_date_list = args.add_bill[2].split(".")
+        start_date = datetime.date(int(start_date_list[0]), int(start_date_list[1]), int(start_date_list[2]))
+        end_date = datetime.date(int(end_date_list[0]), int(end_date_list[1]), int(end_date_list[2]))
+        bill_type = args.add_bill[3]
+        tenant_list = read_tenants(TENANT_FILENAME)
+        postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water')])
+        property_conf = None
+        bill_list = None
+        new_bill = Bill(bill_type, amount, start_date, end_date, int(postoffice.tenant_count))
+        print()
+        who_owes_what(new_bill, tenant_list) # List how much is owing
+
+
+
+
+#def main():
+    #print("Welcome to the bill calculator!")
+    #tenant_list = load_tenants(TENANT_FILENAME)
+    #print()
+
+    ## Set property details, bills are a dummy at the moment, most important is 4 (number of tenants)
+    #postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water')])
+    #postoffice.list_bills()
+    #property_conf = None
+    #bill_list = None
+    #a = MenuSwitcher(TENANT_FILENAME, tenant_list, property_conf, bill_list)
+    #a.main_menu()
+    ##new_bill = add_bill(postoffice)
+
+    ### Print out who owes what
+    ##print()
+    ##who_owes_what(new_bill, tenant_list) # List how much is owing
 
 if __name__ == "__main__":
     main()

@@ -6,6 +6,7 @@ import datetime
 import uuid
 import argparse
 import sys
+import json
 from distutils import util
 
 BILL_FILENAME = os.path.join(os.getcwd(), 'bills.csv')
@@ -124,6 +125,24 @@ class Person:
             self.left_house.month,\
             self.left_house.day
 
+    def to_json(self):
+        raw_json = {"person": {
+                    "name": self.name,
+                    "entered_house": {
+                        "year": self.entered_house.year,
+                        "month": self.entered_house.month,
+                        "day": self.entered_house.day
+                    },
+                    "left_house": {
+                        "year": self.left_house.year,
+                        "month": self.left_house.month,
+                        "day": self.left_house.day
+                    },
+                    "still_at_address": self.still_at_address
+                    }
+                }
+        return raw_json
+
     # Summary of the individual tenant
     def summary(self):
         print('{:10} \t {} -> {} ({} days)'.format(self.name, self.get_from_date(), self.get_to_date(), str((self.get_to_date() - self.get_from_date()).days)))
@@ -150,6 +169,7 @@ def read_tenants(filename):
                                       row[4], # Still at address boolean
                                       datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
     print("Imported", len(tenant_list), "tenants")
+    print(tenant_list[0].to_json())
     return tenant_list
 
 # The intention here is to load the property from a database/CSV
@@ -313,7 +333,7 @@ def main():
         list_tenants(tenant_list)
     if args.a is not None:
         tenant_list = read_tenants(TENANT_FILENAME)
-        postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water')])
+        postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water'), ('electricity', 'tango')])
         property_conf = None
         bill_list = None
         new_bill = add_bill(postoffice, args.a, ALLOWED_BILL_CATEGORIES, BILL_FILENAME)

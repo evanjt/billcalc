@@ -87,7 +87,7 @@ class Person:
     def __init__(self, name, entered_house, still_at_address, left_house=None, user_id=None):
         self.name = name
         self.entered_house = entered_house
-        self.still_at_address = util.strtobool(still_at_address) # Force boolean
+        self.still_at_address = bool(still_at_address) # Force boolean
         if user_id == None:
             self.user_id = uuid.uuid4() # Generate unique ID for referencing tenant
         else:
@@ -321,18 +321,40 @@ def save_data(tenant_list, property_conf, filename):
 
 
 def load_data(filename):
+    # Read JSON
     with open(filename, "r") as json_file:
         json_data = json.load(json_file)
+
+    # Add property information
     property_data = json_data['property']
+    bill_types = []
+    for key, value in property_data['bill_types'].items():
+        bill_types.append((key, value))
+    property_conf = Property(property_data['name'],
+                             property_data['tenant_count'],
+                             bill_types)
+
+    # Add all tenants
     tenant_data = json_data['tenants']
     tenant_list = []
     for tenant in tenant_data:
-        print(tenant.values()['name'])
-    for row in reader:
-        tenant_list.append(Person(str(row[0]), # Name
-                                    datetime.date(int(row[1]), int(row[2]), int(row[3])), # In house
-                                    row[4], # Still at address boolean
-                                    datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
+        for keys, values in tenant.items():
+            # Seperates values from JSON into variables -- cleaner
+            user_id = keys
+            name = values['name']
+            iny = int(values['entered_house']['year'])
+            inm = int(values['entered_house']['month'])
+            ind = int(values['entered_house']['day'])
+            outy = int(values['left_house']['year'])
+            outm = int(values['left_house']['month'])
+            outd = int(values['left_house']['day'])
+            still_at_address = values['still_at_address']
+            in_house = datetime.date(iny, inm, ind)
+            out_house = datetime.date(outy, outm, outd)
+            # Add tenant from JSON data
+            tenant_list.append(Person(name, in_house, still_at_address, out_house, user_id))
+
+    return tenant_list, property_conf
 
 def set_property_values(property_filename):
     name = input("Enter property name: ")
@@ -363,13 +385,11 @@ def main():
     parser.add_argument("-l", help="Lists current tenants in CSV", action="store_true")
     parser.add_argument("-p", help="Set property values", action="store_true")
     args = parser.parse_args()
-    load_data(PROGRAM_JSON)
+    tenant_list, property_conf = load_data(PROGRAM_JSON)
     #check_files(BILL_FILENAME, PROPERTY_FILENAME, TENANT_FILENAME)
     if args.l:
-        tenant_list = read_tenants(TENANT_FILENAME)
         list_tenants(tenant_list)
-        postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water'), ('electricity', 'tango')])
-        save_data(tenant_list, postoffice, PROGRAM_JSON)
+        save_data(tenant_list, property_conf, PROGRAM_JSON)
 
     if args.a is not None:
         tenant_list = read_tenants(TENANT_FILENAME)

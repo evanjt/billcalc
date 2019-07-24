@@ -9,6 +9,7 @@ import sys
 import json
 from distutils import util
 
+PROGRAM_JSON = os.path.join(os.getcwd(), 'billcalc.json')
 BILL_FILENAME = os.path.join(os.getcwd(), 'bills.csv')
 TENANT_FILENAME = os.path.join(os.getcwd(), 'tenants.csv')
 PROPERTY_FILENAME = os.path.join(os.getcwd(), 'property.csv')
@@ -74,12 +75,23 @@ class Property:
         for key, value in self.bill.items():
             print(key.capitalize() + ' (' + value.capitalize() + ')')
 
+    def to_json(self):
+        raw_json = {"name": self.name,
+                    "tenant_count": self.tenant_count,
+                    "bill_types": self.bill_types
+                    }
+        return raw_json
+
+
 class Person:
-    def __init__(self, name, entered_house, still_at_address, left_house=None):
+    def __init__(self, name, entered_house, still_at_address, left_house=None, user_id=None):
         self.name = name
         self.entered_house = entered_house
         self.still_at_address = util.strtobool(still_at_address) # Force boolean
-        self.id = uuid.uuid4() # Generate unique ID for referencing tenant
+        if user_id == None:
+            self.user_id = uuid.uuid4() # Generate unique ID for referencing tenant
+        else:
+            self.user_id = user_id
         if left_house == None:
             self.left_house = datetime.date.today()
         else:
@@ -126,8 +138,7 @@ class Person:
             self.left_house.day
 
     def to_json(self):
-        raw_json = {"person": {
-                    "name": self.name,
+        raw_json = {"name": self.name,
                     "entered_house": {
                         "year": self.entered_house.year,
                         "month": self.entered_house.month,
@@ -140,8 +151,7 @@ class Person:
                     },
                     "still_at_address": self.still_at_address
                     }
-                }
-        return raw_json
+        return str(self.user_id), raw_json
 
     # Summary of the individual tenant
     def summary(self):
@@ -169,7 +179,7 @@ def read_tenants(filename):
                                       row[4], # Still at address boolean
                                       datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
     print("Imported", len(tenant_list), "tenants")
-    print(tenant_list[0].to_json())
+    #print(tenant_list[0].to_json())
     return tenant_list
 
 # The intention here is to load the property from a database/CSV
@@ -298,6 +308,32 @@ def list_categories(allowed_categories):
         if category != allowed_categories[-1]:
             print('/', end='')
 
+def save_data(tenant_list, property_conf, filename):
+    tenant_data = []
+    property_data = property_conf.to_json()
+    for tenant in tenant_list:
+        tenant_id, tenant_json = tenant.to_json()
+        tenant_data.append({tenant_id:tenant_json})
+    out_json = {"property": property_data,
+                "tenants": tenant_data}
+    with open(filename, "w") as json_file:
+        json.dump(out_json, json_file, indent=4)
+
+
+def load_data(filename):
+    with open(filename, "r") as json_file:
+        json_data = json.load(json_file)
+    property_data = json_data['property']
+    tenant_data = json_data['tenants']
+    tenant_list = []
+    for tenant in tenant_data:
+        print(tenant.values()['name'])
+    for row in reader:
+        tenant_list.append(Person(str(row[0]), # Name
+                                    datetime.date(int(row[1]), int(row[2]), int(row[3])), # In house
+                                    row[4], # Still at address boolean
+                                    datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
+
 def set_property_values(property_filename):
     name = input("Enter property name: ")
     tenant_count = input("Enter number of tenants: ")
@@ -327,10 +363,14 @@ def main():
     parser.add_argument("-l", help="Lists current tenants in CSV", action="store_true")
     parser.add_argument("-p", help="Set property values", action="store_true")
     args = parser.parse_args()
-    check_files(BILL_FILENAME, PROPERTY_FILENAME, TENANT_FILENAME)
+    load_data(PROGRAM_JSON)
+    #check_files(BILL_FILENAME, PROPERTY_FILENAME, TENANT_FILENAME)
     if args.l:
         tenant_list = read_tenants(TENANT_FILENAME)
         list_tenants(tenant_list)
+        postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water'), ('electricity', 'tango')])
+        save_data(tenant_list, postoffice, PROGRAM_JSON)
+
     if args.a is not None:
         tenant_list = read_tenants(TENANT_FILENAME)
         postoffice = Property('post office', 4, [('gas', 'origin'), ('water', 'yarra valley water'), ('electricity', 'tango')])

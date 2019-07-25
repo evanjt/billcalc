@@ -17,7 +17,7 @@ ALLOWED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
 
 # Set up some classes - Bills/Property/Persons
 class Bill:
-    def __init__(self, category, amount, from_date, to_date, property_object, bill_id=None):
+    def __init__(self, category, amount, from_date, to_date, property_object, unique_id=None):
         self.category = category
         self.amount = amount
         self.from_date = from_date
@@ -30,11 +30,17 @@ class Bill:
         #if category.lower() not in allowed_categories:
             #sys.exit("Bill category not in hardcoded allowed types")
         self.supplier = property_object.bill_types[category.lower()]
-        if bill_id == None:
-            self.bill_id = uuid.uuid4() # Generate unique ID for referencing bill
+        if unique_id == None:
+            self.unique_id = uuid.uuid4() # Generate unique ID for referencing bill
         else:
-            self.bill_id = bill_id
+            self.unique_id = unique_id
 
+    # Custom equality rule to help prevent adding bill twice
+    def __eq__(self, other):
+        return self.amount == other.amount \
+            and self.from_date == other.from_date \
+            and self.to_date == other.to_date \
+            and self.category == other.category
 
     def get_from_date(self):
         return self.from_date
@@ -71,7 +77,7 @@ class Bill:
                     },
                     "supplier": self.supplier
                     }
-        return str(self.bill_id), raw_json
+        return str(self.unique_id), raw_json
 
 class Property:
     def __init__(self, name, tenant_count, bill_types=None): # Bill types are stored as a list of tuples
@@ -105,14 +111,14 @@ class Property:
         return raw_json
 
 class Person:
-    def __init__(self, name, entered_house, still_at_address, left_house=None, user_id=None):
+    def __init__(self, name, entered_house, still_at_address, left_house=None, unique_id=None):
         self.name = name
         self.entered_house = entered_house
         self.still_at_address = bool(still_at_address) # Force boolean
-        if user_id == None:
-            self.user_id = uuid.uuid4() # Generate unique ID for referencing tenant
+        if unique_id == None:
+            self.unique_id = uuid.uuid4() # Generate unique ID for referencing tenant
         else:
-            self.user_id = user_id
+            self.unique_id = unique_id
         if left_house == None:
             self.left_house = datetime.date.today()
         else:
@@ -172,66 +178,17 @@ class Person:
                     },
                     "still_at_address": self.still_at_address
                     }
-        return str(self.user_id), raw_json
+        return str(self.unique_id), raw_json
 
     # Summary of the individual tenant
     def summary(self):
         print('{:10} \t {} -> {} ({} days)'.format(self.name, self.get_from_date(), self.get_to_date(), str((self.get_to_date() - self.get_from_date()).days)))
 
-# Keep a file with the list of tenants
-def save_tenants(filename, tenant_list):
-    with open(filename, 'w', newline='') as csvfile:
-        csv_header = ['name', 'year_in', 'month_in', 'day_in', 'still_at_address', 'year_out', 'month_out', 'day_out']
-        writer = csv.writer(csvfile, delimiter=',')
-        writer.writerow(csv_header)
-        for tenant in tenant_list:
-            writer.writerow(tenant.raw_output())
-    print("Saved tenant list to", filename)
-
-# Reads the file of saved tenant information
-def read_tenants(filename):
-    tenant_list = []
-    with open(filename, newline='') as csvfile:
-        reader = csv.reader(csvfile)
-        next(reader, None) # Skip header
-        for row in reader:
-            tenant_list.append(Person(str(row[0]), # Name
-                                      datetime.date(int(row[1]), int(row[2]), int(row[3])), # In house
-                                      row[4], # Still at address boolean
-                                      datetime.date(int(row[5]), int(row[6]), int(row[7])))) # Out house
-    print("Imported", len(tenant_list), "tenants")
-    #print(tenant_list[0].to_json())
-    return tenant_list
-
-# The intention here is to load the property from a database/CSV
-def check_files(bill_filename, property_filename, tenant_filename):
-    # Bills
-    if os.path.exists(bill_filename):
-        print("Bill CSV found")
-    else:
-        csv_header = ['bill_type', 'amount', 'start_year', 'start_month', 'start_day', 'end_year', 'end_month', 'end_date', 'supplier']
-        write_csv_header(bill_filename, csv_header)
-
-    # Property
-    if os.path.exists(property_filename):
-        print("Property CSV found")
-    else:
-        csv_header = ['name', 'tenant_count', 'bill1_type', 'bill1_provider', 'bill2_type', 'bill2_provider',
-                      'bill3_type', 'bill3_provider', 'bill4_type', 'bill4_provider']
-        write_csv_header(property_filename, csv_header)
-
-    # Tenant
-    if os.path.exists(tenant_filename):
-        print("Tenant CSV found")
-    else:
-        csv_header = ['name', 'year_in', 'month_in', 'day_in', 'still_at_address', 'year_out', 'month_out', 'day_out']
-        write_csv_header(tenant_filename, csv_header)
-
-def write_csv_header(filename, csv_header):
-    with open(filename, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile, delimiter=',')
-        writer.writerow(csv_header)
-    print("Created", filename)
+# A helper function to return the object by giving a UUID4
+def search_id(in_id, object_list):
+    for x in object_list:
+        if x.unique_id == in_id:
+            return x
 
 def add_new_tenant():
     name = input("Name of person: ")
@@ -278,22 +235,6 @@ def list_tenants(tenant_list):
     for tenant in tenant_list:
         tenant.summary()
 
-def load_tenants(filename):
-    if os.path.exists(filename):
-        tenant_list = read_tenants(filename)
-        tenant_list = ask_to_add_tenant(filename, tenant_list)
-    else:
-        print("Please add a tenant")
-        add_tenant = True
-        tenant_list = []
-        tenant_list.append(add_tenant())
-        tenant_list = ask_to_add_tenant(filename, tenant_list)
-    return tenant_list
-
-def load_property_conf(filename):
-    if os.path.exists(filename):
-        property_conf = read()
-
 def add_bill(property_conf, bill_detail_list, bill_list):
     amount = float(bill_detail_list[0])
     start_date_list = bill_detail_list[1].split(".")
@@ -308,25 +249,29 @@ def add_bill(property_conf, bill_detail_list, bill_list):
 
     bill = Bill(bill_type, float(amount), start_date, end_date, property_conf)
 
-    #with open(bill_filename, 'a', newline='') as csvfile:
-            #writer = csv.writer(csvfile, delimiter=',')
-            #writer.writerow(bill.raw_output())
+    for other_bill in bill_list:
+        if other_bill == bill:
+            print("Bill already exists")
+            return bill_list
 
+    # If bill hasn't been added before, add to list and return
     bill_list.append(bill)
-
     return bill_list
 
 # Check each tenant if they apply to a bill, and if so, print out name, days and amount
 def who_owes_what(bill, tenants):
     total_check = 0
+    list_of_payees = []
     for tenant in tenants:
         tenant_data = tenant.owes(bill)
         if tenant_data is not None:
             print("{:10}${:>6.2f} ({} days)".format(tenant_data[0], tenant_data[2], tenant_data[1]))
             total_check += tenant_data[2]
+            list_of_payees.append(tenant_data)
     difference = total_check - bill.amount
     print()
     print("{} bill, {} total sum [{:+} difference]".format(bill.amount, total_check, difference))
+    return list_of_payees
 
 def list_categories(allowed_categories):
     for category in allowed_categories:
@@ -341,13 +286,14 @@ def start_from_nothing():
 
     return tenant_list, property_conf
 
+# Save all data to a JSON file stored locally
 def save_json(tenant_list, property_conf, bill_list, filename):
     property_data = property_conf.to_json()
 
     bill_data = []
     for bill in bill_list:
-        bill_id, bill_json = bill.to_json()
-        bill_data.append({bill_id: bill_json})
+        unique_id, bill_json = bill.to_json()
+        bill_data.append({unique_id: bill_json})
 
     tenant_data = []
     for tenant in tenant_list:
@@ -361,6 +307,7 @@ def save_json(tenant_list, property_conf, bill_list, filename):
     with open(filename, "w") as json_file:
         json.dump(out_json, json_file, indent=4)
 
+# Loads the JSON into a list of tenants, a list of bills, and property information
 def load_json(filename):
     # Read JSON
     if os.path.exists(filename):
@@ -386,7 +333,7 @@ def load_json(filename):
     for tenant in tenant_data:
         for keys, values in tenant.items():
             # Seperates values from JSON into variables -- cleaner
-            user_id = keys
+            unique_id = keys
             name = values['name']
             iny = int(values['entered_house']['year'])
             inm = int(values['entered_house']['month'])
@@ -398,14 +345,14 @@ def load_json(filename):
             in_house = datetime.date(iny, inm, ind)
             out_house = datetime.date(outy, outm, outd)
             # Add tenant from JSON data
-            tenant_list.append(Person(name, in_house, still_at_address, out_house, user_id))
+            tenant_list.append(Person(name, in_house, still_at_address, out_house, unique_id))
 
     # Load bills
     bill_list = []
     bill_data = json_data['bills']
     for bill in bill_data:
             for keys, values in bill.items():
-                bill_id = keys
+                unique_id = keys
                 cat = str(values['category'])
                 amount = float(values['amount'])
                 fromy = int(values['from_date']['year'])
@@ -417,7 +364,7 @@ def load_json(filename):
                 supplier = str(values['supplier'])
                 from_date = datetime.date(fromy, fromm, fromd)
                 to_date = datetime.date(toy, tom, tod)
-                bill_list.append(Bill(cat, amount, from_date, to_date, property_conf, bill_id))
+                bill_list.append(Bill(cat, amount, from_date, to_date, property_conf, unique_id))
 
     return tenant_list, property_conf, bill_list
 
@@ -445,21 +392,24 @@ def set_property_values(property_filename):
 def main():
     # Argparse content
     parser = argparse.ArgumentParser()
-    parser.add_argument("-a", nargs=4, metavar=('amount', 'start-date', 'end-date', 'bill-category'),
+    parser.add_argument("-b", nargs=4, metavar=('amount', 'start-date', 'end-date', 'bill-category'),
                         help="Add bill. Dates should be yyyy.mm.dd. Bill type options are: " + '/'.join(ALLOWED_BILL_CATEGORIES))
-    parser.add_argument("-l", help="Lists current tenants in CSV", action="store_true")
+    parser.add_argument("-lt", help="Lists current tenants", action="store_true")
+    parser.add_argument("-lb", help="Lists all bills", action="store_true")
     parser.add_argument("-p", help="Set property values", action="store_true")
     args = parser.parse_args()
 
     # Load stored data
     tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON)
 
-    if args.l:
+    if args.lb:
+        print("listing bills")
+    if args.lt:
         list_tenants(tenant_list)
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
 
-    if args.a is not None:
-        new_bill = add_bill(property_conf, args.a, bill_list)
+    if args.b is not None:
+        new_bill = add_bill(property_conf, args.b, bill_list)
         print()
         who_owes_what(new_bill[-1], tenant_list) # List how much is owing
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)

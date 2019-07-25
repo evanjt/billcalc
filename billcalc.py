@@ -79,6 +79,9 @@ class Bill:
                     }
         return str(self.unique_id), raw_json
 
+    def summary(self):
+        print('{} -> {} ({} days) ${} {} ({})'.format(self.get_from_date(), self.get_to_date(), self.total_days(), self.amount, self.category, self.supplier))
+
 class Property:
     def __init__(self, name, tenant_count, bill_types=None): # Bill types are stored as a list of tuples
         self.name = name
@@ -389,6 +392,9 @@ def set_property_values(property_filename):
         bill_types[bill_type.lower()] = bill_provider.lower()
     return name, tenant_count, bill_types
 
+def list_bills(bill_list):
+    for bill in bill_list:
+        bill.summary()
 def main():
     # Argparse content
     parser = argparse.ArgumentParser()
@@ -403,7 +409,8 @@ def main():
     tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON)
 
     if args.lb:
-        print("listing bills")
+        list_bills(bill_list)
+
     if args.lt:
         list_tenants(tenant_list)
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
@@ -413,6 +420,7 @@ def main():
         print()
         who_owes_what(new_bill[-1], tenant_list) # List how much is owing
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
+
     if args.p:
         print(set_property_values(PROPERTY_FILENAME))
 

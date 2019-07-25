@@ -8,14 +8,13 @@ import argparse
 import sys
 import json
 from distutils import util
+from shutil import copyfile
 
 PROGRAM_JSON = os.path.join(os.getcwd(), 'billcalc.json')
-BILL_FILENAME = os.path.join(os.getcwd(), 'bills.csv')
-TENANT_FILENAME = os.path.join(os.getcwd(), 'tenants.csv')
-PROPERTY_FILENAME = os.path.join(os.getcwd(), 'property.csv')
+BACKUP_JSON = os.path.join(os.getcwd(), 'billcalc.json_bak')
 ALLOWED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
 
-# Set up some classes - Bills/Property/Persons
+# Set up some classes - Bills/Property/Tenants
 class Bill:
     def __init__(self, category, amount, from_date, to_date, property_object, unique_id=None):
         self.category = category
@@ -113,7 +112,7 @@ class Property:
                     }
         return raw_json
 
-class Person:
+class Tenant:
     def __init__(self, name, entered_house, still_at_address, left_house=None, unique_id=None):
         self.name = name
         self.entered_house = entered_house
@@ -194,7 +193,7 @@ def search_id(in_id, object_list):
             return x
 
 def add_new_tenant():
-    name = input("Name of person: ")
+    name = input("Name of tenant: ")
     print("\nEnter date of when tenant started living at the house")
     print("NOTE: If tenants are changing, the end date and the start date must be the same")
     year_in = input("Year entered house: ")
@@ -212,9 +211,9 @@ def add_new_tenant():
         still_at_address = False
 
     if still_at_address == True:
-        return Person(name, datetime.date(int(year_in), int(month_in), int(day_in)), True)
+        return Tenant(name, datetime.date(int(year_in), int(month_in), int(day_in)), True)
     else:
-        return Person(name, datetime.date(int(year_in), int(month_in), int(day_in)), False, datetime.date(int(year_out), int(month_out), int(day_out)))
+        return Tenant(name, datetime.date(int(year_in), int(month_in), int(day_in)), False, datetime.date(int(year_out), int(month_out), int(day_out)))
 
 def ask_to_add_tenant(TENANT_FILENAME, tenant_list):
     list_tenants(tenant_list)
@@ -348,7 +347,7 @@ def load_json(filename):
             in_house = datetime.date(iny, inm, ind)
             out_house = datetime.date(outy, outm, outd)
             # Add tenant from JSON data
-            tenant_list.append(Person(name, in_house, still_at_address, out_house, unique_id))
+            tenant_list.append(Tenant(name, in_house, still_at_address, out_house, unique_id))
 
     # Load bills
     bill_list = []
@@ -395,6 +394,7 @@ def set_property_values(property_filename):
 def list_bills(bill_list):
     for bill in bill_list:
         bill.summary()
+
 def main():
     # Argparse content
     parser = argparse.ArgumentParser()
@@ -407,6 +407,8 @@ def main():
 
     # Load stored data
     tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON)
+    copyfile(PROGRAM_JSON, BACKUP_JSON)
+
 
     if args.lb:
         list_bills(bill_list)
@@ -419,10 +421,16 @@ def main():
         new_bill = add_bill(property_conf, args.b, bill_list)
         print()
         who_owes_what(new_bill[-1], tenant_list) # List how much is owing
-        save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
 
     if args.p:
         print(set_property_values(PROPERTY_FILENAME))
+
+    try:
+        save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
+    except:
+        copyfile(BACKUP_JSON, PROGRAM_JSON)
+        sys.exit("Error saving file")
+    os.remove(BACKUP_JSON)
 
 if __name__ == "__main__":
     main()

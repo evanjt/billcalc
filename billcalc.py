@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+''' Written to log the in/out dates of tenants and split
+    house
+    bills appropriately according to their time at the
+    house. The program does no management of bills, just stores
+    their information for recalculation purposes in a JSON file
+
+    Author:     Evan Thomas
+    Contact:    evan {ą} evanjt ! com
+'''
+
 import os
 import datetime
 import uuid
@@ -11,7 +21,7 @@ from shutil import copyfile
 
 PROGRAM_JSON = os.path.join(os.getcwd(), 'billcalc.json')
 BACKUP_JSON = os.path.join(os.getcwd(), 'billcalc.json_bak')
-ALLOWED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
+SUGGESTED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
 
 # Set up some classes - Bills/Property/Tenants
 class Bill:
@@ -78,17 +88,16 @@ class Bill:
         print('{} -> {} ({} days) ${} {} ({})'.format(self.get_from_date(), self.get_to_date(), self.total_days(), self.amount, self.category, self.supplier))
 
 class Property:
-    def __init__(self, name, tenant_count, bill_types=None): # Bill types are stored as a list of tuples
+    def __init__(self, name, tenant_count, bill_types=None):
         self.name = name
         self.tenant_count = int(tenant_count)
-        self.bill_types = {}
 
         if bill_types == None:
             print("No bill types!")
+            bill_types = {}
             #self.add_bill()
         else:
-            for bill_type in bill_types:
-                self.bill_types[bill_type[0]] = bill_type[1] # Set type and current provider
+            self.bill_types = bill_types
 
     def add_bill(self):
         list_bills()
@@ -236,7 +245,8 @@ def ask_to_add_tenant(TENANT_FILENAME, tenant_list):
     return tenant_list
 
 def list_tenants(tenant_list):
-    for tenant in tenant_list:
+    for idx, tenant in enumerate(tenant_list):
+        print('[{:2}]'.format(idx), end=' ')
         tenant.summary()
 
 def add_bill(property_conf, bill_detail_list, bill_list):
@@ -312,7 +322,7 @@ def save_json(tenant_list, property_conf, bill_list, filename):
         json.dump(out_json, json_file, indent=4)
 
 # Loads the JSON into a list of tenants, a list of bills, and property information
-def load_json(filename):
+def load_json(filename, new_property_conf=None):
     # Read JSON
     if os.path.exists(filename):
         print("Loading stored data... ", end='')
@@ -322,20 +332,24 @@ def load_json(filename):
     with open(filename, "r") as json_file:
         json_data = json.load(json_file)
 
-    # Add property information
-    try:
-        property_data = json_data['property']
-        bill_types = []
-        for key, value in property_data['bill_types'].items():
-            bill_types.append((key, value))
-        property_conf = Property(property_data['name'],
-                                property_data['tenant_count'],
-                                bill_types)
-    except Exception:
-        pass
-        print("\n\nCurrent property information:")
-        property_object.summary()
-        property_conf = set_property_values(property_conf)
+    # Allow for new property information to override JSON if argument provided
+    if new_property_conf is not None:
+        property_conf = new_property_conf
+    else:
+        # Add property information
+        try:
+            property_data = json_data['property']
+            bill_types = {}
+            for key, value in property_data['bill_types'].items():
+                bill_types[key] = value
+            property_conf = Property(property_data['name'],
+                                    property_data['tenant_count'],
+                                    bill_types)
+        except Exception:
+            pass
+            print("\n\nCurrent property information:")
+            property_object.summary()
+            property_conf = set_property_values(property_conf)
 
     # Add all tenants
     tenant_data = json_data['tenants']
@@ -387,16 +401,12 @@ def set_property_values():
     keep_asking = True
     bill_types = {}
     while keep_asking:
-        print("Enter bill category", "(options are " + "/".join(ALLOWED_BILL_CATEGORIES) + ")")
+        print("Enter bill category", "(options are " + "/".join(SUGGESTED_BILL_CATEGORIES) + ")")
         print("Press Enter to escape")
         bill_type = input(": ")
         if len(bill_type) == 0:
             keep_asking = False
             break
-        while bill_type.lower() not in ALLOWED_BILL_CATEGORIES:
-            print("Bill category not allowed")
-            bill_type = input(": ")
-
         print("Enter bill provider")
         bill_provider = input(": ")
         bill_types[bill_type.lower()] = bill_provider.lower()
@@ -412,62 +422,85 @@ def main():
     # Argparse content
     parser = argparse.ArgumentParser()
     arg_bills = parser.add_argument_group("Bills")
-    arg_bills.add_argument("-b", nargs=4, metavar=('amount', 'from', 'until', 'bill-category'),
-                        help="Add bill. Dates should be yyyy.mm.dd")
-    arg_bills.add_argument("-lb", help="Lists all bills", action="store_true")
-    arg_bills.add_argument("-rc", help="Recalculate bill for tenants. Use with -lb", action="store_true")
-    arg_bills.add_argument("-db", help="Delete bill. Use with -lb", action="store_true")
+    arg_bills.add_argument("-b", nargs=4, metavar=('AMOUNT', 'DATEFROM', 'DATEUNTIL', 'CATEGORY'),
+                        help="Add bill. Dates should be yyyy.mm.dd. Category electricity, gas, etc")
+    arg_bills.add_argument("-lb", "--list-bills", help="Lists all bills", action="store_true")
+    arg_bills.add_argument("-rc", "--recalculate", help="Recalculate bill for tenants. Use with -lb", action="store_true")
+    arg_bills.add_argument("-db", "--delete-bill", help="Delete bill", action="store_true")
+
     arg_tenants = parser.add_argument_group("Tenants")
-    arg_tenants.add_argument("-lt", help="Lists current tenants", action="store_true")
+    arg_tenants.add_argument("-lt", "--list-tenants", help="Lists current tenants", action="store_true")
+    arg_tenants.add_argument("-dt", "--delete-tenant", help="Delete tenant", action="store_true")
+
     arg_property = parser.add_argument_group("Property settings")
-    arg_property.add_argument("-p", help="Set property values", action="store_true")
-    arg_property.add_argument("-lp", help="List current property values", action="store_true")
+    arg_property.add_argument("-p", "--property-set", help="Set property values", action="store_true")
+    arg_property.add_argument("-lp", "--list-property", help="List current property values", action="store_true")
 
     args = parser.parse_args()
 
-    # Load stored data
-    tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON)
+    # If the user is setting new property values, send them to load_json, which will send them
+    # straight back, rather than using the values stored in the JSON
+    if args.property_set:
+        new_property_conf = set_property_values()
+        tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON, new_property_conf)
+    else:
+        # Load stored data
+        tenant_list, property_conf, bill_list = load_json(PROGRAM_JSON)
+
+    # Create backup of user data
     copyfile(PROGRAM_JSON, BACKUP_JSON)
 
-    if args.lb:
-        list_bills(bill_list)
-
-    if args.rc:
-        list_bills(bill_list)
-        print()
-        bill_number = input("Recalculate for which bill #: ")
-        who_owes_what(bill_list[int(bill_number)], tenant_list)
-
-    if args.db:
-        list_bills(bill_list)
-        print()
-        print("WARNING!! This cannot be undone")
-        bill_number = input("Delete which bill #: ")
-        bill_list.pop(int(bill_number))
-        print()
-        list_bills(bill_list)
-
-    if args.lt:
-        list_tenants(tenant_list)
-        save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
-
-    if args.b is not None:
-        new_bill = add_bill(property_conf, args.b, bill_list)
-        print()
-        who_owes_what(new_bill[-1], tenant_list) # List how much is owing
-
-    if args.p:
-        property_conf = set_property_values(property_conf)
-
-    if args.lp:
-        property_conf.summary()
-
-    # If error saving, copy back the backup and exit, otherwise remove backup
     try:
+        if args.list_bills:
+            list_bills(bill_list)
+
+        if args.recalculate:
+            list_bills(bill_list)
+            print()
+            bill_number = input("Recalculate for which bill #: ")
+            who_owes_what(bill_list[int(bill_number)], tenant_list)
+
+        if args.delete_bill:
+            list_bills(bill_list)
+            print()
+            print("WARNING!! This cannot be undone")
+            bill_number = input("Delete which bill #: ")
+            bill_list.pop(int(bill_number))
+            print()
+            list_bills(bill_list)
+
+        if args.delete_tenant:
+            list_tenants(tenant_list)
+            print()
+            print("WARNING!! This cannot be undone")
+            tenant_number = input("Delete which tenant #: ")
+            tenant_list.pop(int(tenant_number))
+            print()
+            list_tenants(tenant_list)
+
+        if args.list_tenants:
+            list_tenants(tenant_list)
+            save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
+
+        if args.b is not None:
+            new_bill = add_bill(property_conf, args.b, bill_list)
+            print()
+            who_owes_what(new_bill[-1], tenant_list) # List how much is owing
+
+        if args.list_property:
+            property_conf.summary()
+
+        # Print help if no arguments passed
+        if len(sys.argv[1:]) == 0:
+            parser.print_help()
+
+        # If error saving, copy back the backup and exit, otherwise remove backup
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
     except:
         copyfile(BACKUP_JSON, PROGRAM_JSON)
-        sys.exit("Error saving file")
+        sys.exit("Error saving file. Changes not saved")
+
+    # Remove backup file
     os.remove(BACKUP_JSON)
 
 if __name__ == "__main__":

@@ -226,24 +226,6 @@ def add_new_tenant():
     else:
         return Tenant(name, datetime.date(int(year_in), int(month_in), int(day_in)), False, datetime.date(int(year_out), int(month_out), int(day_out)))
 
-def ask_to_add_tenant(TENANT_FILENAME, tenant_list):
-    list_tenants(tenant_list)
-    add_tenant = True
-    has_added_tenant = False
-    while add_tenant:
-        answer = input("Do you wish to add another tenant? yes/no: ")
-        if answer == "yes":
-            add_tenant = True
-            tenant_list.append(add_new_tenant())
-            has_added_tenant = True # Has added one, reprint list
-        else:
-            add_tenant = False
-            save_tenants(TENANT_FILENAME, tenant_list)
-            if has_added_tenant:
-                print("\nUpdated tenant list:")
-                list_tenants(tenant_list)
-    return tenant_list
-
 def list_tenants(tenant_list):
     for idx, tenant in enumerate(tenant_list):
         print('[{:2}]'.format(idx), end=' ')
@@ -276,6 +258,9 @@ def add_bill(property_conf, bill_detail_list, bill_list):
 def who_owes_what(bill, tenants):
     total_check = 0
     list_of_payees = []
+    print("Bill:")
+    bill.summary()
+    print()
     for tenant in tenants:
         tenant_data = tenant.owes(bill)
         if tenant_data is not None:
@@ -295,10 +280,19 @@ def list_categories(allowed_categories):
 
 def start_from_nothing():
     tenant_list = []
-    property_conf = {}
-    print("Add details... Only a placeholder for the moment")
+    bill_list = []
+    print("No file found. Set property values:")
 
-    return tenant_list, property_conf
+    property_conf = set_property_values()
+    print()
+    print("Add new tenant")
+    tenant_list.append(add_new_tenant())
+    print()
+    list_tenants(tenant_list)
+    print("To add extra tenants, rerun the program with the -t switch")
+
+
+    return tenant_list, property_conf, bill_list
 
 # Save all data to a JSON file stored locally
 def save_json(tenant_list, property_conf, bill_list, filename):
@@ -328,7 +322,9 @@ def load_json(filename, new_property_conf=None):
         print("Loading stored data... ", end='')
     else:
         print(filename, "not found")
-        start_from_nothing()
+        tenant_list, property_conf, bill_list = start_from_nothing()
+        save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
+        return tenant_list, property_conf, bill_list
     with open(filename, "r") as json_file:
         json_data = json.load(json_file)
 
@@ -429,6 +425,7 @@ def main():
     arg_bills.add_argument("-db", "--delete-bill", help="Delete bill", action="store_true")
 
     arg_tenants = parser.add_argument_group("Tenants")
+    arg_tenants.add_argument("-t", "--add-tenant", help="Add tenant", action="store_true")
     arg_tenants.add_argument("-lt", "--list-tenants", help="Lists current tenants", action="store_true")
     arg_tenants.add_argument("-dt", "--delete-tenant", help="Delete tenant", action="store_true")
 
@@ -451,6 +448,10 @@ def main():
     copyfile(PROGRAM_JSON, BACKUP_JSON)
 
     try:
+        if args.add_tenant:
+            tenant_list.append(add_new_tenant())
+            list_tenants(tenant_list)
+
         if args.list_bills:
             list_bills(bill_list)
 
@@ -458,6 +459,7 @@ def main():
             list_bills(bill_list)
             print()
             bill_number = input("Recalculate for which bill #: ")
+            print()
             who_owes_what(bill_list[int(bill_number)], tenant_list)
 
         if args.delete_bill:

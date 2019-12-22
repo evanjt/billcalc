@@ -26,13 +26,6 @@ PROGRAM_JSON = os.path.join(os.getcwd(), 'billcalc.json')
 BACKUP_JSON = os.path.join(os.getcwd(), 'billcalc.json_bak')
 SUGGESTED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
 
-# Settings for Postgres DB server
-SERVER_USER = 'evan'
-SERVER_DB = 'postoffice'
-SERVER_SCHEMA = 'billcalc'
-SERVER_HOST = '10.1.1.100'
-SERVER_PORT = '5432'
-
 # Set up some classes - Bills/Property/Tenants
 class Bill:
     def __init__(self, category, amount, from_date, to_date, property_object, unique_id=None):

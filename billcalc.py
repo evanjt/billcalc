@@ -16,12 +16,22 @@ import uuid
 import argparse
 import sys
 import json
+import psycopg2
+import getpass
+import csv
 from distutils import util
 from shutil import copyfile
 
 PROGRAM_JSON = os.path.join(os.getcwd(), 'billcalc.json')
 BACKUP_JSON = os.path.join(os.getcwd(), 'billcalc.json_bak')
 SUGGESTED_BILL_CATEGORIES = ['electricity', 'gas', 'water', 'internet']
+
+# Settings for Postgres DB server
+SERVER_USER = 'evan'
+SERVER_DB = 'postoffice'
+SERVER_SCHEMA = 'billcalc'
+SERVER_HOST = '10.1.1.100'
+SERVER_PORT = '5432'
 
 # Set up some classes - Bills/Property/Tenants
 class Bill:
@@ -197,6 +207,55 @@ class Tenant:
     def summary(self):
         print('{:10} \t {} -> {} ({} days)'.format(self.name, self.get_from_date(), self.get_to_date(), str((self.get_to_date() - self.get_from_date()).days)))
 
+class DB:
+    def __init__(self, settings_file):
+        self.settings_file = settings_file
+
+    # Load CSV file containing postgresql settings with schema:
+    #   ['user', 'db', 'schema', 'host', 'port', 'pass']
+    #   * If password is empty in CSV, ask for it
+    #   * Assumes CSV is only 2 lines including header
+    def connect(self):
+        csv_list = []
+        with open(self.settings_file) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            for row in csv_reader:
+                csv_list.append(row)
+
+        #db_header = csv_list[0] # Header line
+        db_settings = csv_list[1]
+
+        # Assign variables from list
+        user = csv_list[1][0]
+        db = csv_list[1][1]
+        self.schema = csv_list[1][2]
+        host = csv_list[1][3]
+        port = csv_list[1][4]
+
+        # If password doesn't exist, ask for it
+        if len(csv_list[1]) > 5:
+            db_pass = csv_list[1][5]
+        else:
+            db_pass = getpass.getpass("Enter DB pass: ")
+
+        # Establish connection
+        try:
+            self.conn = psycopg2.connect(database = db,
+                                     user = user,
+                                     password = db_pass,
+                                     host = host,
+                                     port = port)
+            if self.conn.status:
+                print("Connection successful")
+        except psycopg2.OperationalError as e:
+            print("Failure to connect")
+            #print(e.diag.severity)
+            #print(e.diag.message_hint)
+            print(e.pgcode)
+            print(dir(e.args))
+            print(dir(e.pgerror))
+            print(dir(e.diag))
+
 # A helper function to return the object by giving a UUID4
 def search_id(in_id, object_list):
     for x in object_list:
@@ -291,7 +350,6 @@ def start_from_nothing():
     list_tenants(tenant_list)
     print("To add extra tenants, rerun the program with the -t switch")
 
-
     return tenant_list, property_conf, bill_list
 
 # Save all data to a JSON file stored locally
@@ -325,6 +383,7 @@ def load_json(filename, new_property_conf=None):
         tenant_list, property_conf, bill_list = start_from_nothing()
         save_json(tenant_list, property_conf, bill_list, PROGRAM_JSON)
         return tenant_list, property_conf, bill_list
+
     with open(filename, "r") as json_file:
         json_data = json.load(json_file)
 
@@ -506,4 +565,6 @@ def main():
     os.remove(BACKUP_JSON)
 
 if __name__ == "__main__":
-    main()
+    #main()
+    dbserver = DB('db_settings.csv')
+    dbserver.connect()
